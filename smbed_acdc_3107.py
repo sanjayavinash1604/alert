@@ -132,7 +132,7 @@ def trigger_ntfy(message):
     for i in range(1):
         try:
             resp = requests.post(
-                "https://ntfy.sh/qo2nKyormjaRmtdh",
+                "https://ntfy.sh/QkgDtsDOirwByvHXh",
                 data=message.encode('utf-8'),
                 headers={"Priority": "urgent"},
                 timeout=10
@@ -210,7 +210,7 @@ def fetch_sessions():
                         "time": show["showTime"]
                     })
                     pcx_count += 1
-            print(f"    -> Filtered {pcx_count} PCX SCREEN sessions for {date_code}.")
+            print(f"    -> Filtered {pcx_count} allu cineams sessions for {date_code}.")
             
         except Exception as e:
             
@@ -343,7 +343,7 @@ def main():
                         human_date = humanize_date(s_date)
 
                         msg = (
-                            f"[{newly_unblocked_count} SEATS ]"
+                            f"1604 {newly_unblocked_count} SEATS "
                             f"{rows_str} rows unblocked for Spiderman Brand new day at Allu Cinemas .\n\n"
                             f"{human_date}, {s_time}"
                         )
