@@ -1,4 +1,4 @@
-name: new scraper
+name: spider-man-allu-dolby-31-07-2026
 
 on:
   workflow_dispatch:
