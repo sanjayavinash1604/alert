@@ -8,7 +8,7 @@ import subprocess
 from datetime import datetime
 
 # --- CONFIGURATION --- #WORK FOR PCX BUT NOT FORKING FOR 12:55 23 JUL 2026
-DATES = ["20260731"]
+DATES = ["20260805"]
 VENUE_CODE = "ALUC"
 EVENT_CODE = "ET00502689"
 STATE_FILE = "state3.json"
