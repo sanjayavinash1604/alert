@@ -132,7 +132,7 @@ def trigger_ntfy(message):
     for i in range(1):
         try:
             resp = requests.post(
-                "https://ntfy.sh/QkgDtsDOirwByvHX",
+                "https://ntfy.sh/QkgDtsDOirwByvHX", #allu cinemas
                 data=message.encode('utf-8'),
                 headers={"Priority": "urgent"},
                 timeout=10
