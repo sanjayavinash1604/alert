@@ -54,6 +54,17 @@ jobs:
           
           # Test the proxy to ensure it's routing through Cloudflare
           curl -x socks5://127.0.0.1:40000 https://1.1.1.1/cdn-cgi/trace | grep warp || echo "WARP Test Failed, but continuing..."
+          name: Stop after 2 August 2026 (IST)
+          run: |
+          END_DATE="2026-08-02"
+          TODAY=$(TZ=Asia/Kolkata date +%F)
+          echo "Today (IST): $TODAY"
+          echo "End Date (IST): $END_DATE"
+
+          if [[ "$TODAY" > "$END_DATE" ]]; then
+            echo "2 August is over. Skipping workflow."
+            exit 0
+          fi
 
       - name: Run Polling Script
         run: python -u smbed_acdc_3107.py
