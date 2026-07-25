@@ -342,11 +342,11 @@ def main():
                         rows_str = ", ".join(sorted(unblocked_rows_list))
                         human_date = humanize_date(s_date)
                         msg = (
-                            f"{newly_unblocked_count} Seats Unblocked ALLU\n spiderman \n "
-                            f"rows:{rows_str} \n "
-                            f"{human_date}, {s_time} \n"
-                            f"https://in.bookmyshow.com/movies/hyderabad/seat-layout/ET00502689/ALUC/{s_id}/{s_date}"
-                        )
+                            f"{newly_unblocked_count} Seats Unblocked ALLU\n spiderman \n "
+                            f"rows:{rows_str} \n "
+                            f"{human_date}, {s_time} \n"
+                            f"https://in.bookmyshow.com/movies/hyderabad/seat-layout/ET00502689/ALUC/{s_id}/{s_date}"
+                        )
                         trigger_ntfy(msg)
                     else:
                         print(f"    -> 🟡 Less than 6 seats unblocked ({newly_unblocked_count}). Skipping notification to avoid spam.")
