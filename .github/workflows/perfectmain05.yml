@@ -20,7 +20,7 @@ jobs:
         id: expiry
         shell: bash
         run: |
-          EXPIRY_DATE="2026-08-01"
+          EXPIRY_DATE="2026-07-28"
           TODAY=$(TZ=Asia/Kolkata date +%F)
 
           echo "Today in IST: $TODAY"
@@ -121,7 +121,7 @@ jobs:
         id: next_check
         shell: bash
         run: |
-          EXPIRY_DATE="2026-07-26"
+          EXPIRY_DATE="2026-07-28"
           TODAY=$(TZ=Asia/Kolkata date +%F)
 
           if [[ "$TODAY" > "$EXPIRY_DATE" ]]; then
