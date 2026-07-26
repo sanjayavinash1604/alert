@@ -1,175 +1,147 @@
 name: checktest
-
 on:
   workflow_dispatch:
 
 permissions:
-  contents: write
   actions: write
+  contents: write
+
+concurrency:
+  group: ctest
+  cancel-in-progress: false
 
 jobs:
   poll-bms:
     runs-on: ubuntu-latest
-
-    # Safety limit for installation, setup and script execution.
     timeout-minutes: 360
 
     steps:
+      - name: Check expiry date
+        id: expiry
+        shell: bash
+        run: |
+          EXPIRY_DATE="2026-08-01"
+          TODAY=$(TZ=Asia/Kolkata date +%F)
+
+          echo "Today in IST: $TODAY"
+          echo "Expiry date in IST: $EXPIRY_DATE"
+
+          if [[ "$TODAY" > "$EXPIRY_DATE" ]]; then
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+            echo "Expiry day is over. Workflow will stop."
+          else
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+            echo "Workflow is allowed to run."
+          fi
+
+      - name: Record workflow start time
+        if: steps.expiry.outputs.allowed == 'true'
+        id: timing
+        shell: bash
+        run: |
+          START_TIME=$(date +%s)
+          NEXT_TIME=$((START_TIME + 19800))
+
+          echo "start_time=$START_TIME" >> "$GITHUB_OUTPUT"
+          echo "next_time=$NEXT_TIME" >> "$GITHUB_OUTPUT"
+
+          echo "Next workflow trigger planned in 5 hours 30 minutes."
+
       - name: Checkout Repository
+        if: steps.expiry.outputs.allowed == 'true'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Setup Python
+        if: steps.expiry.outputs.allowed == 'true'
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: '3.10'
 
       - name: Install Python Dependencies
+        if: steps.expiry.outputs.allowed == 'true'
         run: |
-          python -m pip install --upgrade pip
           pip install requests curl-cffi
 
       - name: Configure Git User
+        if: steps.expiry.outputs.allowed == 'true'
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global pull.rebase true
 
       - name: Install and Setup Cloudflare WARP
-        shell: bash
+        if: steps.expiry.outputs.allowed == 'true'
         run: |
-          set -e
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
+            | sudo gpg --yes --dearmor \
+            --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
 
-          # Add the Cloudflare signing key.
-          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg |
-            sudo gpg --yes --dearmor \
-              --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
 
-          # Add the Cloudflare repository.
-          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" |
-            sudo tee /etc/apt/sources.list.d/cloudflare-client.list
-
-          # Install Cloudflare WARP.
           sudo apt-get update
           sudo apt-get install -y cloudflare-warp
 
-          # Register and enable proxy mode.
           warp-cli --accept-tos registration new
           warp-cli --accept-tos mode proxy
           warp-cli --accept-tos connect
 
           sleep 5
-
-          # Display WARP status.
           warp-cli --accept-tos status
 
-          # Test the WARP proxy.
-          curl \
-            --max-time 30 \
-            -x socks5h://127.0.0.1:40000 \
-            https://1.1.1.1/cdn-cgi/trace |
-            grep warp ||
-            echo "WARP test failed, but workflow will continue."
+          curl -x socks5://127.0.0.1:40000 \
+            https://1.1.1.1/cdn-cgi/trace \
+            | grep warp || echo "WARP test failed, but continuing."
 
-      - name: 26th july 2026 expires
-        id: date-check
+      - name: Run Polling Script
+        if: steps.expiry.outputs.allowed == 'true'
+        run: |
+          python -u smbed_acdc_3107.py
+
+      - name: Wait until 5 hours 30 minutes from workflow start
+        if: steps.expiry.outputs.allowed == 'true'
         shell: bash
         run: |
-          END_DATE="2026-07-26"
+          NEXT_TIME="${{ steps.timing.outputs.next_time }}"
+          NOW=$(date +%s)
+          WAIT_SECONDS=$((NEXT_TIME - NOW))
+
+          if (( WAIT_SECONDS > 0 )); then
+            echo "Waiting $WAIT_SECONDS seconds before starting next workflow."
+            sleep "$WAIT_SECONDS"
+          else
+            echo "The 5 hour 30 minute point has already passed."
+            echo "Starting the next workflow immediately."
+          fi
+
+      - name: Check whether next workflow is allowed
+        if: steps.expiry.outputs.allowed == 'true'
+        id: next_check
+        shell: bash
+        run: |
+          EXPIRY_DATE="2026-07-26"
           TODAY=$(TZ=Asia/Kolkata date +%F)
 
-          echo "Today in IST: $TODAY"
-          echo "End date: $END_DATE"
-
-          if [[ "$TODAY" > "$END_DATE" ]]; then
-            echo "End date has passed. No polling or restart will occur."
-            echo "allowed=false" >> "$GITHUB_OUTPUT"
+          if [[ "$TODAY" > "$EXPIRY_DATE" ]]; then
+            echo "start_next=false" >> "$GITHUB_OUTPUT"
+            echo "Expiry day is over. No new workflow will be started."
           else
-            echo "Workflow is allowed to run."
-            echo "allowed=true" >> "$GITHUB_OUTPUT"
+            echo "start_next=true" >> "$GITHUB_OUTPUT"
+            echo "Next workflow is allowed."
           fi
 
-      - name: Run Polling Script and Start Next Workflow
-        if: steps.date-check.outputs.allowed == 'true'
-        shell: bash
+      - name: Start next workflow
+        if: |
+          steps.expiry.outputs.allowed == 'true' &&
+          steps.next_check.outputs.start_next == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          WORKFLOW_FILE: perfectmain05.yml
+        shell: bash
         run: |
-          set -uo pipefail
+          gh workflow run "${{ github.workflow }}" \
+            --repo "${{ github.repository }}" \
+            --ref "${{ github.ref_name }}"
 
-          echo "Polling script is starting."
-          echo "Current script will run for a maximum of 5 hours 30 minutes."
-          echo "Next workflow will be requested after 5 hours 25 minutes."
-
-          start_next_workflow() {
-            sleep 5h25m
-
-            # Check the date again before starting another workflow.
-            END_DATE="2026-08-02"
-            TODAY=$(TZ=Asia/Kolkata date +%F)
-
-            if [[ "$TODAY" > "$END_DATE" ]]; then
-              echo "End date has passed."
-              echo "The next workflow will not be started."
-              return 0
-            fi
-
-            echo "Requesting the next perfectmain workflow run."
-
-            gh workflow run "$WORKFLOW_FILE" \
-              --repo "$GITHUB_REPOSITORY" \
-              --ref "$GITHUB_REF_NAME"
-
-            echo "The next workflow run has been requested."
-          }
-
-          # Start the 5-hour-25-minute restart timer in the background.
-          start_next_workflow &
-          RESTART_PID=$!
-
-          # Run the Python script for a maximum of 5 hours 30 minutes.
-          set +e
-
-          timeout \
-            --signal=TERM \
-            --kill-after=30s \
-            5h30m \
-            python -u smbed_acdc_3007.py
-
-          SCRIPT_EXIT_CODE=$?
-
-          set -e
-
-          if [[ "$SCRIPT_EXIT_CODE" -eq 124 ]]; then
-            echo "Polling script reached the 5-hour-30-minute limit."
-            echo "The script was stopped successfully."
-
-          elif [[ "$SCRIPT_EXIT_CODE" -eq 137 ]]; then
-            echo "Polling script did not stop after SIGTERM."
-            echo "It was forcefully stopped."
-
-          elif [[ "$SCRIPT_EXIT_CODE" -eq 0 ]]; then
-            echo "Polling script completed before 5 hours 30 minutes."
-
-            # Stop the pending restart when the script finishes normally.
-            kill "$RESTART_PID" 2>/dev/null || true
-            wait "$RESTART_PID" 2>/dev/null || true
-
-            exit 0
-
-          else
-            echo "Polling script failed with exit code: $SCRIPT_EXIT_CODE"
-
-            # Do not automatically restart after an unexpected failure.
-            kill "$RESTART_PID" 2>/dev/null || true
-            wait "$RESTART_PID" 2>/dev/null || true
-
-            exit "$SCRIPT_EXIT_CODE"
-          fi
-
-          # Ensure the next-workflow request has completed.
-          wait "$RESTART_PID" || true
-
-          echo "Current spider30 workflow completed."
+          echo "Next workflow requested."
