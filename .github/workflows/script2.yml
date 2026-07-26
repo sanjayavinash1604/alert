@@ -98,7 +98,7 @@ jobs:
       - name: Run Polling Script
         if: steps.expiry.outputs.allowed == 'true'
         run: |
-          python -u smbed_acdc_3107.py
+          python -u script20babu.py
 
       - name: Wait until 5 hours 30 minutes from workflow start
         if: steps.expiry.outputs.allowed == 'true'
