@@ -1,4 +1,4 @@
-name: script2
+name: script20
 on:
   workflow_dispatch:
 
