@@ -1,0 +1,154 @@
+name: scripttest2min
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+# Do not add a concurrency block.
+# This allows two runs to operate at the same time.
+
+jobs:
+  poll-bms:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check expiry date
+        id: expiry
+        shell: bash
+        run: |
+          EXPIRY_DATE="2026-08-01"
+          TODAY=$(TZ=Asia/Kolkata date +%F)
+
+          echo "Today in IST: $TODAY"
+          echo "Expiry date in IST: $EXPIRY_DATE"
+
+          if [[ "$TODAY" > "$EXPIRY_DATE" ]]; then
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+            echo "Expiry day is over. Workflow will stop."
+          else
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+            echo "Workflow is allowed to run."
+          fi
+
+      - name: Checkout Repository
+        if: steps.expiry.outputs.allowed == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        if: steps.expiry.outputs.allowed == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Python Dependencies
+        if: steps.expiry.outputs.allowed == 'true'
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests curl-cffi
+
+      - name: Configure Git User
+        if: steps.expiry.outputs.allowed == 'true'
+        shell: bash
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email \
+            "github-actions[bot]@users.noreply.github.com"
+          git config --global pull.rebase true
+
+      - name: Install and Setup Cloudflare WARP
+        if: steps.expiry.outputs.allowed == 'true'
+        shell: bash
+        run: |
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
+            | sudo gpg --yes --dearmor \
+              --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+
+          sudo apt-get update
+          sudo apt-get install -y cloudflare-warp
+
+          warp-cli --accept-tos registration new
+          warp-cli --accept-tos mode proxy
+          warp-cli --accept-tos connect
+
+          sleep 5
+          warp-cli --accept-tos status
+
+          curl -x socks5://127.0.0.1:40000 \
+            https://1.1.1.1/cdn-cgi/trace \
+            | grep warp \
+            || echo "WARP test failed, but continuing."
+
+      - name: Run script and trigger next workflow
+        if: steps.expiry.outputs.allowed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+
+          EXPIRY_DATE="2026-08-01"
+
+          echo "Starting script20babu.py..."
+          python -u script20babu.py &
+          SCRIPT_PID=$!
+
+          echo "Python process ID: $SCRIPT_PID"
+
+          stop_script() {
+            if kill -0 "$SCRIPT_PID" 2>/dev/null; then
+              echo "Stopping current Python script..."
+              kill -TERM "$SCRIPT_PID" 2>/dev/null || true
+
+              sleep 10
+
+              if kill -0 "$SCRIPT_PID" 2>/dev/null; then
+                echo "Force-stopping Python script..."
+                kill -KILL "$SCRIPT_PID" 2>/dev/null || true
+              fi
+            else
+              echo "Python script has already stopped."
+            fi
+          }
+
+          trap stop_script EXIT INT TERM
+
+          echo "Current script will run for 4 minutes before requesting the next workflow."
+          sleep 240
+
+          TODAY=$(TZ=Asia/Kolkata date +%F)
+
+          echo "Current IST date: $TODAY"
+          echo "Expiry date: $EXPIRY_DATE"
+
+          if [[ "$TODAY" > "$EXPIRY_DATE" ]]; then
+            echo "Expiry day is over."
+            echo "The next workflow will not be started."
+          else
+            echo "Requesting the next workflow..."
+
+            gh workflow run "${{ github.workflow }}" \
+              --repo "${{ github.repository }}" \
+              --ref "${{ github.ref_name }}"
+
+            echo "Next workflow requested successfully."
+          fi
+
+          echo "Keeping the current workflow active for 1 more minute."
+          sleep 60
+
+          stop_script
+          trap - EXIT INT TERM
+
+          wait "$SCRIPT_PID" 2>/dev/null || true
+
+          echo "Current test run completed."
